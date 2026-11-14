@@ -126,6 +126,31 @@ test('сміття ігнорується', function () {
   assert.deepStrictEqual(L.parseParams(''), {});
 });
 
+console.log('Telegram startapp');
+test('загоєння: класика і плівка', function () {
+  assert.deepStrictEqual(L.parseStartParam('after_20261120_classic'),
+    { tab: 'after', healDate: '2026-11-20', mode: 'classic' });
+  assert.deepStrictEqual(L.parseStartParam('after_20261120_film4'),
+    { tab: 'after', healDate: '2026-11-20', mode: 'film', filmDays: 4 });
+  assert.deepStrictEqual(L.parseStartParam('20261120_film3'),
+    { tab: 'after', healDate: '2026-11-20', mode: 'film', filmDays: 3 });
+});
+test('сеанс', function () {
+  assert.deepStrictEqual(L.parseStartParam('before_202611201400'),
+    { tab: 'before', session: '2026-11-20T14:00' });
+  assert.deepStrictEqual(L.parseStartParam('202611201400'),
+    { tab: 'before', session: '2026-11-20T14:00' });
+});
+test('сміття і межі', function () {
+  assert.deepStrictEqual(L.parseStartParam('after_20261320_film9'), { tab: 'after', mode: 'film' });
+  assert.deepStrictEqual(L.parseStartParam(''), {});
+  assert.deepStrictEqual(L.parseStartParam('hello'), {});
+});
+test('параметр від Telegram у посиланні сторінки', function () {
+  assert.deepStrictEqual(L.parseParams('?tgWebAppStartParam=after_20261120_film5'),
+    { tab: 'after', healDate: '2026-11-20', mode: 'film', filmDays: 5 });
+});
+
 console.log('Тексти');
 test('дати українською', function () {
   assert.strictEqual(L.formatDate(L.parseDate('2026-11-14')), '14 листопада');

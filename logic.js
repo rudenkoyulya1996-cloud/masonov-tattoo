@@ -216,6 +216,15 @@
         raw[decodeURIComponent(k)] = decodeURIComponent(v.replace(/\+/g, ' '));
       } catch (e) { /* пошкоджений параметр — пропускаємо */ }
     }
+    // Telegram Mini App: t.me/бот/pamyatka?startapp=after_20261120_film4
+    var start = raw.tgWebAppStartParam || raw.startapp;
+    if (start) {
+      var fromStart = parseStartParam(start);
+      for (var key in fromStart) {
+        if (Object.prototype.hasOwnProperty.call(fromStart, key)) out[key] = fromStart[key];
+      }
+    }
+
     if (raw.tab === 'before' || raw.tab === 'after') out.tab = raw.tab;
     if (parseDate(raw.date)) out.healDate = raw.date.trim();
     if (raw.mode === 'film' || raw.mode === 'classic') out.mode = raw.mode;
@@ -225,6 +234,42 @@
     }
     var s = parseDateTime(raw.session);
     if (s) out.session = toDateTimeStr(s);
+    return out;
+  }
+
+  /*
+    Короткий параметр для Telegram (дозволено лише латиницю, цифри, _ і -).
+    Частини через «_», порядок довільний:
+      after / before        — вкладка
+      20261120              — дата сеансу для трекера загоєння
+      202611201400          — дата й час сеансу (вкладка підготовки)
+      classic / film / film3 / film4 / film5 — режим і дні плівки
+    Приклади: after_20261120_classic, after_20261120_film4, before_202611201400
+  */
+  function parseStartParam(str) {
+    var out = {};
+    if (typeof str !== 'string') return out;
+    str.split(/[_-]/).forEach(function (part) {
+      var p = part.toLowerCase();
+      var m;
+      if (p === 'after' || p === 'before') out.tab = p;
+      else if (p === 'classic') out.mode = 'classic';
+      else if ((m = /^film([0-9]?)$/.exec(p))) {
+        out.mode = 'film';
+        var n = parseInt(m[1], 10);
+        if (n >= FILM_MIN && n <= FILM_MAX) out.filmDays = n;
+      } else if (/^\d{8}$/.test(p)) {
+        var ds = p.slice(0, 4) + '-' + p.slice(4, 6) + '-' + p.slice(6, 8);
+        if (parseDate(ds)) out.healDate = ds;
+      } else if (/^\d{12}$/.test(p)) {
+        var dts = p.slice(0, 4) + '-' + p.slice(4, 6) + '-' + p.slice(6, 8) + 'T' + p.slice(8, 10) + ':' + p.slice(10, 12);
+        if (parseDateTime(dts)) out.session = dts;
+      }
+    });
+    if (!out.tab) {
+      if (out.healDate || out.mode) out.tab = 'after';
+      else if (out.session) out.tab = 'before';
+    }
     return out;
   }
 
@@ -262,6 +307,7 @@
     healingEvents: healingEvents,
     sessionCountdown: sessionCountdown,
     parseParams: parseParams,
+    parseStartParam: parseStartParam,
     hash: hash,
   };
 });

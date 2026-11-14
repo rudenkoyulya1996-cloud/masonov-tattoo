@@ -79,8 +79,51 @@
   var ua = navigator.userAgent || '';
   var isIOS = !/Android/i.test(ua) &&
     (/iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
-  var isInApp = /Instagram|FBAN|FBAV|FB_IAB|Telegram|Line\/|WebView|; wv\)/i.test(ua);
+  // Сторінка відкрита як Telegram Mini App (Telegram додає tgWebApp… в адресу)
+  var isTelegram = /tgWebApp/.test(window.location.hash + window.location.search);
+  var isInApp = !isTelegram && /Instagram|FBAN|FBAV|FB_IAB|Telegram|Line\/|WebView|; wv\)/i.test(ua);
   var isStandalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+  var tg = null;
+
+  /* ---------- Telegram Mini App ---------- */
+
+  function initTelegram() {
+    if (!isTelegram) return;
+    doc.documentElement.classList.add('in-telegram');
+    var s = doc.createElement('script');
+    s.src = 'https://telegram.org/js/telegram-web-app.js';
+    s.onload = function () {
+      try {
+        tg = window.Telegram && window.Telegram.WebApp;
+        if (!tg) return;
+        tg.ready();
+        tg.expand();
+        var bg = '#E9EAE5';
+        if (tg.isVersionAtLeast && tg.isVersionAtLeast('6.1')) {
+          tg.setHeaderColor(bg);
+          tg.setBackgroundColor(bg);
+        }
+        if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.10') && tg.setBottomBarColor) tg.setBottomBarColor(bg);
+        if (tg.isVersionAtLeast && tg.isVersionAtLeast('7.7') && tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+      } catch (e) { /* стара версія Telegram — працюємо без цього */ }
+    };
+    doc.head.appendChild(s);
+  }
+
+  /* Відкрити зовнішнє посилання: у Telegram — через його браузер */
+  function openExternal(url) {
+    if (tg && tg.openLink) {
+      try { tg.openLink(url); return true; } catch (e) { /* далі звичайний спосіб */ }
+    }
+    return false;
+  }
+
+  /* Адреса сторінки з поточними даними, без службових параметрів Telegram */
+  function shareableUrl(hash) {
+    var base = window.location.origin + window.location.pathname;
+    var q = window.location.search;
+    return base + q + (hash || '');
+  }
 
   var toastTimer = null;
   function toast(text) {
@@ -163,6 +206,7 @@
     return '' +
       '<div class="actions">' +
         arrowBtn('button', 'btn--accent', calendarLabel, 'type="button" data-action="' + calendarAction + '"') +
+        (isTelegram ? '<p class="note">' + esc(C.common.telegramCalendarHint) + '</p>' : '') +
         (isInApp ? '' +
           '<div class="inapp">' +
             '<p>' + esc(C.common.inAppBrowserHint) + '</p>' +
@@ -419,10 +463,36 @@
     }
   }
 
+  /* Усередині Telegram файл календаря не відкривається, тому відкриваємо
+     пам'ятку в звичайному браузері з тими самими даними — там кнопка спрацює. */
+  function openInBrowserForCalendar(kind) {
+    if (!isTelegram) return false;
+    var url = shareableUrl('#cal=' + kind);
+    if (!openExternal(url)) window.open(url, '_blank');
+    return true;
+  }
+
+  /* Прийшли з Telegram по календар: підсвічуємо потрібну кнопку */
+  function handleCalendarHash() {
+    var m = /^#cal=(healing|session)$/.exec(window.location.hash);
+    if (!m) return;
+    try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
+    var kind = m[1];
+    state.tab = kind === 'healing' ? 'after' : 'before';
+    setTimeout(function () {
+      var btn = $('[data-action="calendar-' + kind + '"]');
+      if (!btn) return;
+      btn.scrollIntoView({ block: 'center' });
+      btn.classList.add('is-pulsing');
+      toast(C.common.calendarTapHint);
+    }, 400);
+  }
+
   function calendarHealing() {
     var cal = C.after.calendar;
     var events = L.healingEvents(state.healDate, state.mode, state.filmDays);
     if (!events.length) { toast(C.common.calendarNeedsDate); return; }
+    if (openInBrowserForCalendar('healing')) return;
     var ics = window.Ics.build(events.map(function (ev) {
       var text = cal.events[ev.kind];
       return {
@@ -440,7 +510,8 @@
     var cal = C.before.calendar;
     var at = L.parseDateTime(state.session);
     if (!at) { toast(C.common.calendarNeedsDate); return; }
-    var end = new Date(at.getTime() + (cal.durationHours || 3) * 3600000);
+    if (openInBrowserForCalendar('session')) return;
+    var end =new Date(at.getTime() + (cal.durationHours || 3) * 3600000);
     var ics = window.Ics.build([{
       uid: 'session-' + L.toDateTimeStr(at).replace(/\D/g, '') + '@masonov-tattoo',
       allDay: false,
@@ -480,6 +551,12 @@
     doc.addEventListener('click', function (e) {
       var t = e.target.closest('button, a');
       if (!t) return;
+
+      // У Telegram зовнішні посилання відкриваємо через Telegram
+      if (t.tagName === 'A' && t.target === '_blank' && openExternal(t.href)) {
+        e.preventDefault();
+        return;
+      }
 
       if (t.matches('[role="tab"]')) {
         if (t.getAttribute('data-tab') !== state.tab) {
@@ -600,7 +677,7 @@
 
   function maybeShowIosHint() {
     var isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|YaBrowser|GSA\//.test(ua);
-    if (!isIOS || !isSafari || isInApp || isStandalone) return;
+    if (!isIOS || !isSafari || isInApp || isTelegram || isStandalone) return;
     if (store.get('ios-hint-shown', false)) return;
     var H = C.common.iosHint;
     var el = $('#iosHint');
@@ -640,6 +717,8 @@
       bg.classList.add('has-image');
     }
 
+    initTelegram();
+    handleCalendarHash();
     renderBefore();
     renderAfter();
     updateMode();

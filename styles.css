@@ -631,6 +631,18 @@ strong { color: var(--text); font-weight: 700; }
 }
 .inapp .btn { margin-top: 10px; width: 100%; justify-content: center; padding: 8px 20px; background: var(--soft); }
 
+.note {
+  margin: -2px 8px 4px;
+  font-size: 13.5px;
+  color: var(--muted);
+}
+
+.btn.is-pulsing { animation: pulse 1.4s var(--ease) 3; }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(128, 160, 40, 0.55); }
+  50% { box-shadow: 0 0 0 10px rgba(128, 160, 40, 0); }
+}
+
 /* ---------- Підпис ---------- */
 
 .footer {
